@@ -10,6 +10,10 @@ public enum HTTPParserType {
   case Request, Response, Both
 }
 
+func cbOnMessageBegin(p: UnsafeMutablePointer<http_parser>) -> Int32 {
+  return 0
+}
+
 public final class HTTPParser {
   
   enum ParseState {
@@ -38,21 +42,62 @@ public final class HTTPParser {
     }
     http_parser_init(&parser, cType)
     
+    // how to fill this with 'self': parser.data = XYZ
+    
+    // TRY: maybe this is a solution:
+    //   https://gist.github.com/weissi/2af52224667f9e6da1ed
+    callbacks.on_message_begin = cbOnMessageBegin
+    // http_cb      = (UnsafeMutablePointer<http_parser>) -> Int32
+    // http_data_cb = (UnsafeMutablePointer<http_parser>,
+    //                 UnsafePointer<Int8>, UInt) -> Int32
     /*
-struct http_parser_settings {
-var on_message_begin: http_cb
-var on_url: http_data_cb
-var on_status: http_data_cb
-var on_header_field: http_data_cb
-var on_header_value: http_data_cb
-var on_headers_complete: http_cb
-var on_body: http_data_cb
-var on_message_complete: http_cb
-init()
-init(on_message_begin: http_cb, on_url: http_data_cb, on_status: http_data_cb, on_header_field: http_data_cb, on_header_value: http_data_cb, on_headers_complete: http_cb, on_body: http_data_cb, on_message_complete: http_cb)
-}
-*/
+    typedef int (*http_data_cb) (http_parser*, const char *at, size_t length);
+    typedef int (*http_cb) (http_parser*);
+    
+    struct http_parser_settings {
+      var on_message_begin: http_cb
+      var on_url: http_data_cb
+      var on_status: http_data_cb
+      var on_header_field: http_data_cb
+      var on_header_value: http_data_cb
+      var on_headers_complete: http_cb
+      var on_body: http_data_cb
+      var on_message_complete: http_cb
+    }
+    */
   }
+  
+  /* callbacks FIXME: REPLACE BLOCKS with FUNCS
+  func wireUpCallbacks() {
+    // Note: CString is NOT a real C string, it's length terminated
+    http_parser_set_on_message_begin(parser, {
+      [unowned self] (_: UnsafeMutablePointer<http_parser>) -> Int32 in
+      self.message  = nil
+      self.clearState()
+      return 0
+    })
+    http_parser_set_on_message_complete(parser, {
+      [unowned self] (_: UnsafeMutablePointer<http_parser>) -> Int32 in
+      self.messageFinished()
+    })
+    http_parser_set_on_headers_complete(parser) {
+      [unowned self] (_: UnsafeMutablePointer<http_parser>) -> Int32 in
+      self.headerFinished()
+    }
+    http_parser_set_on_url(parser) { [unowned self] in
+      self.processDataForState(.URL, d: $1, l: $2)
+    }
+    http_parser_set_on_header_field(parser) { [unowned self] in
+      self.processDataForState(.HeaderName, d: $1, l: $2)
+    }
+    http_parser_set_on_header_value(parser) { [unowned self] in
+      self.processDataForState(.HeaderValue, d: $1, l: $2)
+    }
+    http_parser_set_on_body(parser) { [unowned self] in
+      self.processDataForState(.Body, d: $1, l: $2)
+    }
+  }
+  */
 
 
   /* callbacks */
@@ -98,10 +143,6 @@ init(on_message_begin: http_cb, on_url: http_data_cb, on_status: http_data_cb, o
   {
     // Note: the parser doesn't expect this to be 0-terminated.
     let len = UInt(count)
-    
-    if !isWiredUp {
-      wireUpCallbacks()
-    }
     
     let bytesConsumed = http_parser_execute(&parser, &callbacks, buffer, len)
     
@@ -303,43 +344,6 @@ init(on_message_begin: http_cb, on_url: http_data_cb, on_status: http_data_cb, o
       println("did not parse a message ...")
       return 42
     }
-  }
-  
-  /* callbacks */
-  
-  func wireUpCallbacks() {
-    // http_cb      = (UnsafeMutablePointer<http_parser>) -> Int32
-    // http_data_cb = (UnsafeMutablePointer<http_parser>, 
-    //                 UnsafePointer<Int8>, UInt) -> Int32
-    // Note: CString is NOT a real C string, it's length terminated
-    /* FIXME: REPLACE BLOCKS with FUNCS
-    http_parser_set_on_message_begin(parser, {
-      [unowned self] (_: UnsafeMutablePointer<http_parser>) -> Int32 in
-      self.message  = nil
-      self.clearState()
-      return 0
-    })
-    http_parser_set_on_message_complete(parser, {
-      [unowned self] (_: UnsafeMutablePointer<http_parser>) -> Int32 in
-      self.messageFinished()
-     })
-    http_parser_set_on_headers_complete(parser) {
-      [unowned self] (_: UnsafeMutablePointer<http_parser>) -> Int32 in
-      self.headerFinished()
-    }
-    http_parser_set_on_url(parser) { [unowned self] in
-      self.processDataForState(.URL, d: $1, l: $2)
-    }
-    http_parser_set_on_header_field(parser) { [unowned self] in
-      self.processDataForState(.HeaderName, d: $1, l: $2)
-    }
-    http_parser_set_on_header_value(parser) { [unowned self] in
-      self.processDataForState(.HeaderValue, d: $1, l: $2)
-    }
-    http_parser_set_on_body(parser) { [unowned self] in
-      self.processDataForState(.Body, d: $1, l: $2)
-    }
-*/
   }
 }
 
