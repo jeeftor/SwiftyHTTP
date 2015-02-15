@@ -29,40 +29,12 @@
 #include <string.h>
 #include <limits.h>
 
-#include <Block.h>
-
-
-// hh: moved into non-ARC file
-struct http_parser_settings {
-  http_cb      on_message_begin;
-  http_data_cb on_url;
-  http_data_cb on_status;
-  http_data_cb on_header_field;
-  http_data_cb on_header_value;
-  http_cb      on_headers_complete;
-  http_data_cb on_body;
-  http_cb      on_message_complete;
-};
-#define CB_SETTER(name, blockType) \
-  void http_parser_set_ ## name (http_parser *parser, blockType cb) { \
-    parser->cb-> name = (blockType)Block_copy(cb); \
-  }
-
-CB_SETTER(on_message_begin,    http_cb)
-CB_SETTER(on_url,              http_data_cb)
-CB_SETTER(on_status,           http_data_cb)
-CB_SETTER(on_header_field,     http_data_cb)
-CB_SETTER(on_header_value,     http_data_cb)
-CB_SETTER(on_headers_complete, http_cb)
-CB_SETTER(on_body,             http_data_cb)
-CB_SETTER(on_message_complete, http_cb)
-
-unsigned int http_parser_get_type(http_parser *p) {
-  return p->type;
-}
-
+#if 1 // hh: added accessor func, Swift 6.3b1 won't map bitfields
 enum http_errno http_parser_get_errno(http_parser *p) {
   return p->http_errno;
+}
+unsigned int http_parser_get_type(http_parser *p) {
+  return p->type;
 }
 void http_parser_get_response_info
   (http_parser *p, unsigned short *major, unsigned short *minor,
@@ -80,6 +52,7 @@ void http_parser_get_request_info
   if (minor)  *minor  = p->http_minor;
   if (method) *method = p->method;
 }
+#endif
 
 
 #ifndef ULLONG_MAX
@@ -627,12 +600,10 @@ parse_url_char(enum state s, const char ch)
 }
 
 size_t http_parser_execute (http_parser *parser,
+                            const http_parser_settings *settings,
                             const char *data,
                             size_t len)
 {
-  //hh
-  const http_parser_settings *settings = parser->cb;
-  
   char c, ch;
   int8_t unhex_val;
   const char *p = data;
@@ -2026,38 +1997,16 @@ http_method_str (enum http_method m)
   return ELEM_AT(method_strings, m, "<unknown>");
 }
 
-// hh: change to malloc, Swift-Bridging doesn't seem to expose C structs?
-http_parser *
-http_parser_init (enum http_parser_type t)
+
+void
+http_parser_init (http_parser *parser, enum http_parser_type t)
 {
-  http_parser *parser = malloc(sizeof(http_parser));
-  //hh: void *data = parser->data; /* preserve application data */
+  void *data = parser->data; /* preserve application data */
   memset(parser, 0, sizeof(*parser));
-  //hh: parser->data = data;
+  parser->data = data;
   parser->type = t;
   parser->state = (t == HTTP_REQUEST ? s_start_req : (t == HTTP_RESPONSE ? s_start_res : s_start_req_or_res));
   parser->http_errno = HPE_OK;
-  parser->cb = malloc(sizeof(http_parser_settings)); // hh: yuck, another malloc
-  memset(parser->cb, 0, sizeof(http_parser_settings));
-  return parser;
-}
-void http_parser_free(http_parser *parser)
-{
-  if (parser != NULL) {
-    if (parser->cb != NULL) {
-      // Block_release seems to check for NULL
-      Block_release(parser->cb->on_message_begin);
-      Block_release(parser->cb->on_url);
-      Block_release(parser->cb->on_status);
-      Block_release(parser->cb->on_header_field);
-      Block_release(parser->cb->on_header_value);
-      Block_release(parser->cb->on_headers_complete);
-      Block_release(parser->cb->on_body);
-      Block_release(parser->cb->on_message_complete);
-      free(parser->cb);
-    }
-    free(parser);
-  }
 }
 
 const char *

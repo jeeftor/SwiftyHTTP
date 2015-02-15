@@ -16,7 +16,8 @@ public final class HTTPParser {
     case Idle, URL, HeaderName, HeaderValue, Body
   }
   
-  let parser     : UnsafeMutablePointer<http_parser>
+  var parser     : http_parser
+  var callbacks  : http_parser_settings
   let buffer     = RawByteBuffer(capacity: 4096)
   var parseState = ParseState.Idle
   
@@ -35,13 +36,25 @@ public final class HTTPParser {
       case .Response: cType = HTTP_RESPONSE
       case .Both:     cType = HTTP_BOTH
     }
-    parser = http_parser_init(cType)
+    http_parser_init(&parser, cType)
+    
+    /*
+struct http_parser_settings {
+var on_message_begin: http_cb
+var on_url: http_data_cb
+var on_status: http_data_cb
+var on_header_field: http_data_cb
+var on_header_value: http_data_cb
+var on_headers_complete: http_cb
+var on_body: http_data_cb
+var on_message_complete: http_cb
+init()
+init(on_message_begin: http_cb, on_url: http_data_cb, on_status: http_data_cb, on_header_field: http_data_cb, on_header_value: http_data_cb, on_headers_complete: http_cb, on_body: http_data_cb, on_message_complete: http_cb)
+}
+*/
   }
-  deinit {
-    http_parser_free(parser)
-  }
-  
-  
+
+
   /* callbacks */
   
   public func onRequest(cb: ((HTTPRequest) -> Void)?) -> Self {
@@ -77,7 +90,7 @@ public final class HTTPParser {
   /* write */
   
   public var bodyIsFinal: Bool {
-    return http_body_is_final(parser) == 0 ? false:true
+    return http_body_is_final(&parser) == 0 ? false:true
   }
   
   public func write
@@ -90,9 +103,9 @@ public final class HTTPParser {
       wireUpCallbacks()
     }
     
-    let bytesConsumed = http_parser_execute(self.parser, buffer, len)
+    let bytesConsumed = http_parser_execute(&parser, &callbacks, buffer, len)
     
-    let errno = http_parser_get_errno(parser)
+    let errno = http_parser_get_errno(&parser)
     let err   = HTTPParserError(errno)
     
     if err != .OK {
@@ -174,8 +187,8 @@ public final class HTTPParser {
     return addData(d, length: l)
   }
   
-  public var isRequest  : Bool { return http_parser_get_type(parser) == 0 }
-  public var isResponse : Bool { return http_parser_get_type(parser) == 1 }
+  public var isRequest  : Bool { return http_parser_get_type(&parser) == 0 }
+  public var isResponse : Bool { return http_parser_get_type(&parser) == 1 }
   
   public class func parserCodeToMethod(rq: CUnsignedInt) -> HTTPMethod? {
     return parserCodeToMethod(http_method(rq))
@@ -236,7 +249,7 @@ public final class HTTPParser {
     
     if isRequest {
       var rq : CUnsignedInt = 0
-      http_parser_get_request_info(parser, &major, &minor, &rq)
+      http_parser_get_request_info(&parser, &major, &minor, &rq)
       
       var method  = HTTPParser.parserCodeToMethod(rq)
       
@@ -247,7 +260,7 @@ public final class HTTPParser {
     }
     else if isResponse {
       var status : CUnsignedInt = 200
-      http_parser_get_response_info(parser, &major, &minor, &status)
+      http_parser_get_response_info(&parser, &major, &minor, &status)
       
       // TBD: also grab status text? Doesn't matter in the real world ...
       message = HTTPResponse(status: HTTPStatus(rawValue: Int(status))!,
@@ -256,7 +269,7 @@ public final class HTTPParser {
       self.clearState()
     }
     else { // FIXME: PS style great error handling
-      let msgtype = http_parser_get_type(parser)
+      let msgtype = http_parser_get_type(&parser)
       println("Unexpected message? \(msgtype)")
       assert(msgtype == 0 || msgtype == 1)
     }

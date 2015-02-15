@@ -64,6 +64,7 @@ typedef unsigned __int64 uint64_t;
 #endif
 
 typedef struct http_parser http_parser;
+typedef struct http_parser_settings http_parser_settings;
 
 
 /* Callbacks should return non-zero to indicate an error. The parser will
@@ -79,8 +80,8 @@ typedef struct http_parser http_parser;
  * many times for each string. E.G. you might get 10 callbacks for "on_url"
  * each providing just a few characters more data.
  */
-typedef int (^http_data_cb) (http_parser*, const char *at, size_t length);
-typedef int (^http_cb) (http_parser*);
+typedef int (*http_data_cb) (http_parser*, const char *at, size_t length);
+typedef int (*http_cb) (http_parser*);
 
 
 /* Request Methods */
@@ -198,26 +199,6 @@ enum http_errno {
 /* Get an http_errno value from an http_parser */
 #define HTTP_PARSER_ERRNO(p)            ((enum http_errno) (p)->http_errno)
 
-// hh change: made anonymous
-typedef struct http_parser_settings http_parser_settings;
-extern void http_parser_set_on_message_begin   (http_parser *, http_cb);
-extern void http_parser_set_on_url             (http_parser *, http_data_cb);
-extern void http_parser_set_on_status          (http_parser *, http_data_cb);
-extern void http_parser_set_on_header_field    (http_parser *, http_data_cb);
-extern void http_parser_set_on_header_value    (http_parser *, http_data_cb);
-extern void http_parser_set_on_headers_complete(http_parser *, http_cb);
-extern void http_parser_set_on_body            (http_parser *, http_data_cb);
-extern void http_parser_set_on_message_complete(http_parser *, http_cb);
-
-// hh change: value readers
-extern unsigned int http_parser_get_type(http_parser *);
-extern void http_parser_get_response_info
-  (http_parser *, unsigned short *major, unsigned short *minor,
-   unsigned int *status);
-extern void http_parser_get_request_info
-  (http_parser *, unsigned short *major, unsigned short *minor,
-   unsigned int *method);
-extern enum http_errno http_parser_get_errno(http_parser *);
 
 struct http_parser {
   /** PRIVATE **/
@@ -243,11 +224,31 @@ struct http_parser {
    * error checking.
    */
   unsigned int upgrade : 1;
-  
-  http_parser_settings *cb;
-  
+
   /** PUBLIC **/
   void *data; /* A pointer to get hook to the "connection" or "socket" object */
+};
+
+#if 1 // hh: added accessor func, Swift 6.3b1 won't map bitfields
+extern enum http_errno http_parser_get_errno(http_parser *p);
+extern unsigned int http_parser_get_type(http_parser *p);
+extern void http_parser_get_response_info
+  (http_parser *p, unsigned short *major, unsigned short *minor,
+   unsigned int *status);
+extern void http_parser_get_request_info
+  (http_parser *p, unsigned short *major, unsigned short *minor,
+   unsigned int *method);
+#endif
+
+struct http_parser_settings {
+  http_cb      on_message_begin;
+  http_data_cb on_url;
+  http_data_cb on_status;
+  http_data_cb on_header_field;
+  http_data_cb on_header_value;
+  http_cb      on_headers_complete;
+  http_data_cb on_body;
+  http_cb      on_message_complete;
 };
 
 
@@ -293,12 +294,11 @@ struct http_parser_url {
  */
 unsigned long http_parser_version(void);
 
-// HH: hm, made that a malloc which is kinda crap, but well ...
-http_parser *http_parser_init(enum http_parser_type type);
-void http_parser_free(http_parser *parser);
+void http_parser_init(http_parser *parser, enum http_parser_type type);
 
 
 size_t http_parser_execute(http_parser *parser,
+                           const http_parser_settings *settings,
                            const char *data,
                            size_t len);
 
