@@ -16,8 +16,8 @@ public final class HTTPParser {
     case Idle, URL, HeaderName, HeaderValue, Body
   }
   
-  var parser     : http_parser
-  var callbacks  : http_parser_settings
+  var parser     = http_parser()
+  var callbacks  = http_parser_settings()
   let buffer     = RawByteBuffer(capacity: 4096)
   var parseState = ParseState.Idle
   
@@ -105,13 +105,12 @@ init(on_message_begin: http_cb, on_url: http_data_cb, on_status: http_data_cb, o
     
     let bytesConsumed = http_parser_execute(&parser, &callbacks, buffer, len)
     
-    let errno = http_parser_get_errno(&parser)
-    let err   = HTTPParserError(errno)
+    let err = HTTPParserError(parser.http_errno)
     
     if err != .OK {
       // Now hitting this, not quite sure why. Maybe a Safari feature?
-      let s = http_errno_name(errno)
-      let d = http_errno_description(errno)
+      let s = http_errno_name(parser.http_errno)
+      let d = http_errno_description(parser.http_errno)
       println("BYTES consumed \(bytesConsumed) from \(buffer)[\(len)] " +
               "ERRNO: \(err) \(s) \(d)")
     }
@@ -187,11 +186,11 @@ init(on_message_begin: http_cb, on_url: http_data_cb, on_status: http_data_cb, o
     return addData(d, length: l)
   }
   
-  public var isRequest  : Bool { return http_parser_get_type(&parser) == 0 }
-  public var isResponse : Bool { return http_parser_get_type(&parser) == 1 }
+  public var isRequest  : Bool { return parser.type == 0 }
+  public var isResponse : Bool { return parser.type == 1 }
   
-  public class func parserCodeToMethod(rq: CUnsignedInt) -> HTTPMethod? {
-    return parserCodeToMethod(http_method(rq))
+  public class func parserCodeToMethod(rq: UInt8) -> HTTPMethod? {
+    return parserCodeToMethod(http_method(CUnsignedInt(rq)))
   }
   public class func parserCodeToMethod(rq: http_method) -> HTTPMethod? {
     var method : HTTPMethod?
@@ -244,14 +243,11 @@ init(on_message_begin: http_cb, on_url: http_data_cb, on_status: http_data_cb, o
     
     message = nil
     
-    var major : CUnsignedShort = 1
-    var minor : CUnsignedShort = 1
+    let major = parser.http_major
+    let minor = parser.http_minor
     
     if isRequest {
-      var rq : CUnsignedInt = 0
-      http_parser_get_request_info(&parser, &major, &minor, &rq)
-      
-      var method  = HTTPParser.parserCodeToMethod(rq)
+      var method  = HTTPParser.parserCodeToMethod(parser.method)
       
       message = HTTPRequest(method: method!, url: url!,
                             version: ( Int(major), Int(minor) ),
@@ -259,8 +255,7 @@ init(on_message_begin: http_cb, on_url: http_data_cb, on_status: http_data_cb, o
       self.clearState()
     }
     else if isResponse {
-      var status : CUnsignedInt = 200
-      http_parser_get_response_info(&parser, &major, &minor, &status)
+      let status = parser.status_code
       
       // TBD: also grab status text? Doesn't matter in the real world ...
       message = HTTPResponse(status: HTTPStatus(rawValue: Int(status))!,
@@ -269,9 +264,8 @@ init(on_message_begin: http_cb, on_url: http_data_cb, on_status: http_data_cb, o
       self.clearState()
     }
     else { // FIXME: PS style great error handling
-      let msgtype = http_parser_get_type(&parser)
-      println("Unexpected message? \(msgtype)")
-      assert(msgtype == 0 || msgtype == 1)
+      println("Unexpected message? \(parser.type)")
+      assert(parser.type == 0 || parser.type == 1)
     }
     
     if let m = message {
@@ -318,6 +312,7 @@ init(on_message_begin: http_cb, on_url: http_data_cb, on_status: http_data_cb, o
     // http_data_cb = (UnsafeMutablePointer<http_parser>, 
     //                 UnsafePointer<Int8>, UInt) -> Int32
     // Note: CString is NOT a real C string, it's length terminated
+    /* FIXME: REPLACE BLOCKS with FUNCS
     http_parser_set_on_message_begin(parser, {
       [unowned self] (_: UnsafeMutablePointer<http_parser>) -> Int32 in
       self.message  = nil
@@ -344,6 +339,7 @@ init(on_message_begin: http_cb, on_url: http_data_cb, on_status: http_data_cb, o
     http_parser_set_on_body(parser) { [unowned self] in
       self.processDataForState(.Body, d: $1, l: $2)
     }
+*/
   }
 }
 

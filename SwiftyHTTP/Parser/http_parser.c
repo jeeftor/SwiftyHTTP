@@ -29,32 +29,6 @@
 #include <string.h>
 #include <limits.h>
 
-#if 1 // hh: added accessor func, Swift 6.3b1 won't map bitfields
-enum http_errno http_parser_get_errno(http_parser *p) {
-  return p->http_errno;
-}
-unsigned int http_parser_get_type(http_parser *p) {
-  return p->type;
-}
-void http_parser_get_response_info
-  (http_parser *p, unsigned short *major, unsigned short *minor,
-   unsigned int *status)
-{
-  if (major)  *major  = p->http_major;
-  if (minor)  *minor  = p->http_minor;
-  if (status) *status = p->status_code;
-}
-void http_parser_get_request_info
-  (http_parser *p, unsigned short *major, unsigned short *minor,
-   unsigned int *method)
-{
-  if (major)  *major  = p->http_major;
-  if (minor)  *minor  = p->http_minor;
-  if (method) *method = p->method;
-}
-#endif
-
-
 #ifndef ULLONG_MAX
 # define ULLONG_MAX ((uint64_t) -1) /* 2^64-1 */
 #endif
